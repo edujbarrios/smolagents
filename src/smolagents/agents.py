@@ -76,6 +76,7 @@ from .monitoring import (
     LogLevel,
     Monitor,
     TokenUsage,
+    get_usage_tracker,
 )
 from .remote_executors import BlaxelExecutor, DockerExecutor, E2BExecutor, ModalExecutor, WasmExecutor
 from .tools import BaseTool, Tool, validate_tool_arguments
@@ -290,6 +291,8 @@ class MultiStepAgent(ABC):
             - Return a boolean indicating whether the final answer is valid.
         return_full_result (`bool`, default `False`): Whether to return the full [`RunResult`] object or just the final answer output from the agent run.
     """
+
+    _is_vlm_agent: bool = False
 
     def __init__(
         self,
@@ -527,6 +530,13 @@ You have been provided with these additional arguments, that you can access dire
 
             step_dicts = self.memory.get_full_steps()
 
+            # Record this run in the global usage tracker.
+            get_usage_tracker().record_run(
+                model_id=getattr(self.model, "model_id", None),
+                is_vlm=self._is_vlm_agent,
+                token_usage=token_usage,
+            )
+
             return RunResult(
                 output=output,
                 token_usage=token_usage,
@@ -534,6 +544,29 @@ You have been provided with these additional arguments, that you can access dire
                 timing=Timing(start_time=run_start_time, end_time=time.time()),
                 state=state,
             )
+
+        # Compute token usage for usage tracking even when not returning RunResult.
+        total_input_tokens = 0
+        total_output_tokens = 0
+        correct_token_usage = True
+        for step in self.memory.steps:
+            if isinstance(step, (ActionStep, PlanningStep)):
+                if step.token_usage is None:
+                    correct_token_usage = False
+                    break
+                else:
+                    total_input_tokens += step.token_usage.input_tokens
+                    total_output_tokens += step.token_usage.output_tokens
+        run_token_usage = (
+            TokenUsage(input_tokens=total_input_tokens, output_tokens=total_output_tokens)
+            if correct_token_usage
+            else None
+        )
+        get_usage_tracker().record_run(
+            model_id=getattr(self.model, "model_id", None),
+            is_vlm=self._is_vlm_agent,
+            token_usage=run_token_usage,
+        )
 
         return output
 
@@ -1387,6 +1420,8 @@ class ToolCallingAgent(MultiStepAgent):
                 Panel(Text(f"Calling tool: '{tool_name}' with arguments: {tool_arguments}")),
                 level=LogLevel.INFO,
             )
+            # Track tool invocation in the global usage tracker.
+            get_usage_tracker().record_tool_call(tool_name)
             tool_call_result = self.execute_tool_call(tool_name, tool_arguments)
             tool_call_result_type = type(tool_call_result)
             if tool_call_result_type in [AgentImage, AgentAudio]:
@@ -1804,6 +1839,69 @@ class CodeAgent(MultiStepAgent):
         return super().from_dict(agent_dict, **code_agent_kwargs)
 
 
+class VLMCodeAgent(CodeAgent):
+    """A :class:`CodeAgent` pre-configured for Vision-Language Model (VLM) tasks.
+
+    ``VLMCodeAgent`` extends :class:`CodeAgent` with sensible defaults for multimodal workflows
+    that require processing images alongside text.  It automatically adds vision-oriented
+    instructions to the system prompt (unless you supply custom ``instructions``) and sets the
+    ``_is_vlm_agent`` flag so that the global :class:`~smolagents.monitoring.UsageTracker`
+    can distinguish VLM runs from plain LLM runs.
+
+    Any vision-capable model can be used, for example:
+
+    * :class:`~smolagents.InferenceClientModel` pointing to a multi-modal checkpoint such as
+      ``"meta-llama/Llama-3.2-11B-Vision-Instruct"``.
+    * :class:`~smolagents.LiteLLMModel` with a vision model ID (e.g. ``"gpt-4o"``).
+    * :class:`~smolagents.TransformersModel` loaded from an image-text-to-text checkpoint.
+
+    Args:
+        tools (`list[Tool]`): Tools the agent can use. Consider adding
+            :class:`~smolagents.ImageAnalysisTool` for explicit image Q&A.
+        model ([`~smolagents.Model`]): A vision-capable model instance.
+        instructions (`str`, *optional*): Custom system instructions. When omitted, a set of
+            vision-oriented instructions is injected automatically.
+        **kwargs: All remaining keyword arguments are forwarded to :class:`CodeAgent`.
+
+    Example:
+        ```python
+        import PIL.Image
+        from smolagents import InferenceClientModel, ImageAnalysisTool, VLMCodeAgent
+
+        model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+        agent = VLMCodeAgent(
+            tools=[ImageAnalysisTool(model=model)],
+            model=model,
+        )
+        image = PIL.Image.open("photo.jpg")
+        result = agent.run("What is shown in the image?", images=[image])
+        ```
+    """
+
+    _is_vlm_agent: bool = True
+
+    _DEFAULT_VLM_INSTRUCTIONS: str = (
+        "You are a vision-capable AI agent that can analyze images, screenshots, and other visual "
+        "inputs. When you receive images as part of a task, carefully examine their visual content "
+        "before reasoning or acting. Describe relevant visual details explicitly in your thoughts "
+        "so that subsequent reasoning steps can leverage them."
+    )
+
+    def __init__(
+        self,
+        tools: list[Tool],
+        model: Model,
+        instructions: str | None = None,
+        **kwargs,
+    ):
+        super().__init__(
+            tools=tools,
+            model=model,
+            instructions=instructions or self._DEFAULT_VLM_INSTRUCTIONS,
+            **kwargs,
+        )
+
+
 # Agent Registry for secure deserialization
 # This registry maps agent class names to their actual classes.
 # Only classes listed here can be instantiated during deserialization (from_dict/from_folder).
@@ -1811,4 +1909,5 @@ class CodeAgent(MultiStepAgent):
 AGENT_REGISTRY = {
     "ToolCallingAgent": ToolCallingAgent,
     "CodeAgent": CodeAgent,
+    "VLMCodeAgent": VLMCodeAgent,
 }

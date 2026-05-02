@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import threading
 from dataclasses import dataclass, field
 from enum import IntEnum
 
@@ -30,7 +31,7 @@ from rich.tree import Tree
 from smolagents.utils import sanitize_for_rich
 
 
-__all__ = ["AgentLogger", "LogLevel", "Monitor", "TokenUsage", "Timing"]
+__all__ = ["AgentLogger", "LogLevel", "Monitor", "TokenUsage", "Timing", "UsageTracker", "get_usage_tracker"]
 
 
 @dataclass
@@ -122,6 +123,141 @@ class LogLevel(IntEnum):
     ERROR = 0  # Only errors
     INFO = 1  # Normal output (default)
     DEBUG = 2  # Detailed output
+
+
+class UsageTracker:
+    """Thread-safe singleton that tracks smolagents project-level usage across all agent runs.
+
+    Collects statistics about which models and tools are used, how many tokens are consumed,
+    and how many agent runs (including VLM runs) have been performed. Useful for understanding
+    how a project is using smolagents in production or development.
+
+    Use :func:`get_usage_tracker` to obtain the shared singleton instance.
+
+    Example:
+        ```python
+        from smolagents import CodeAgent, InferenceClientModel
+        from smolagents.monitoring import get_usage_tracker
+
+        model = InferenceClientModel()
+        agent = CodeAgent(tools=[], model=model)
+        agent.run("What is 2+2?")
+
+        tracker = get_usage_tracker()
+        print(tracker.get_summary())
+        ```
+    """
+
+    _instance: "UsageTracker | None" = None
+    _lock: threading.Lock = threading.Lock()
+
+    def __init__(self) -> None:
+        self._data_lock = threading.Lock()
+        self.run_count: int = 0
+        self.vlm_run_count: int = 0
+        self.model_invocations: dict[str, int] = {}
+        self.tool_invocations: dict[str, int] = {}
+        self._total_input_tokens: int = 0
+        self._total_output_tokens: int = 0
+
+    @classmethod
+    def get_instance(cls) -> "UsageTracker":
+        """Return the global singleton :class:`UsageTracker` instance."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
+
+    def record_run(
+        self,
+        model_id: str | None = None,
+        is_vlm: bool = False,
+        token_usage: "TokenUsage | None" = None,
+    ) -> None:
+        """Record the completion of one agent run.
+
+        Args:
+            model_id (`str`, *optional*): Identifier of the model used for the run.
+            is_vlm (`bool`, default `False`): Whether the run was performed by a VLM agent.
+            token_usage ([`TokenUsage`], *optional*): Token counts consumed during the run.
+        """
+        with self._data_lock:
+            self.run_count += 1
+            if is_vlm:
+                self.vlm_run_count += 1
+            if model_id:
+                self.model_invocations[model_id] = self.model_invocations.get(model_id, 0) + 1
+            if token_usage is not None:
+                self._total_input_tokens += token_usage.input_tokens
+                self._total_output_tokens += token_usage.output_tokens
+
+    def record_tool_call(self, tool_name: str) -> None:
+        """Record a single tool invocation.
+
+        Args:
+            tool_name (`str`): Name of the tool that was called.
+        """
+        with self._data_lock:
+            self.tool_invocations[tool_name] = self.tool_invocations.get(tool_name, 0) + 1
+
+    @property
+    def total_token_usage(self) -> "TokenUsage":
+        """Cumulative token usage across all recorded runs."""
+        with self._data_lock:
+            return TokenUsage(
+                input_tokens=self._total_input_tokens,
+                output_tokens=self._total_output_tokens,
+            )
+
+    def get_summary(self) -> dict:
+        """Return a snapshot of the current usage statistics.
+
+        Returns:
+            `dict`: Dictionary containing `run_count`, `vlm_run_count`,
+            `model_invocations`, `tool_invocations`, and `total_token_usage`.
+        """
+        with self._data_lock:
+            return {
+                "run_count": self.run_count,
+                "vlm_run_count": self.vlm_run_count,
+                "model_invocations": dict(self.model_invocations),
+                "tool_invocations": dict(self.tool_invocations),
+                "total_token_usage": {
+                    "input_tokens": self._total_input_tokens,
+                    "output_tokens": self._total_output_tokens,
+                    "total_tokens": self._total_input_tokens + self._total_output_tokens,
+                },
+            }
+
+    def reset(self) -> None:
+        """Reset all tracked statistics to zero."""
+        with self._data_lock:
+            self.run_count = 0
+            self.vlm_run_count = 0
+            self.model_invocations = {}
+            self.tool_invocations = {}
+            self._total_input_tokens = 0
+            self._total_output_tokens = 0
+
+
+def get_usage_tracker() -> UsageTracker:
+    """Return the global singleton :class:`UsageTracker` instance.
+
+    This tracker records project-wide usage of smolagents: models used, tools called,
+    token consumption, and agent run counts.  It is updated automatically when agents
+    run.
+
+    Example:
+        ```python
+        from smolagents.monitoring import get_usage_tracker
+
+        tracker = get_usage_tracker()
+        print(tracker.get_summary())
+        tracker.reset()
+        ```
+    """
+    return UsageTracker.get_instance()
 
 
 YELLOW_HEX = "#d4b702"
