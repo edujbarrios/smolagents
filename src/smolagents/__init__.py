@@ -25,6 +25,7 @@ from .mcp_client import *
 from .memory import *
 from .models import *
 from .monitoring import *
+from .pipeline import *
 from .remote_executors import *
 from .serialization import *
 from .tools import *
