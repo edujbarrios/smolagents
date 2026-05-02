@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .local_python_executor import (
     BASE_BUILTIN_MODULES,
@@ -24,6 +24,11 @@ from .local_python_executor import (
     evaluate_python_code,
 )
 from .tools import PipelineTool, Tool
+
+if TYPE_CHECKING:
+    import PIL.Image
+
+    from .models import Model
 
 
 @dataclass
@@ -638,6 +643,71 @@ class SpeechToTextTool(PipelineTool):
         return self.pre_processor.batch_decode(outputs, skip_special_tokens=True)[0]
 
 
+class ImageAnalysisTool(Tool):
+    """A tool that uses a Vision-Language Model (VLM) to analyze images and answer questions.
+
+    This tool wraps any vision-capable :class:`~smolagents.Model` instance so that agents can
+    call it to obtain textual descriptions or answers about image inputs.
+
+    Args:
+        model ([`~smolagents.Model`]): A vision-capable model instance, e.g.
+            :class:`~smolagents.InferenceClientModel` pointing to a multi-modal model,
+            :class:`~smolagents.LiteLLMModel` with a vision model ID, or
+            :class:`~smolagents.TransformersModel` loaded from an image-text-to-text checkpoint.
+
+    Example:
+        ```python
+        import PIL.Image
+        from smolagents import InferenceClientModel, ImageAnalysisTool, CodeAgent
+
+        model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+        analysis_tool = ImageAnalysisTool(model=model)
+        agent = CodeAgent(tools=[analysis_tool], model=model)
+        image = PIL.Image.open("photo.jpg")
+        agent.run("Describe the objects in this image.", images=[image])
+        ```
+    """
+
+    name = "image_analysis"
+    description = (
+        "Analyzes an image using a Vision-Language Model and answers a question about its visual content. "
+        "Pass an image object and a question string; returns a detailed textual answer."
+    )
+    inputs = {
+        "image": {
+            "type": "image",
+            "description": "The image to analyze (a PIL.Image.Image object).",
+        },
+        "question": {
+            "type": "string",
+            "description": (
+                "The question to answer about the image, e.g. 'What objects are in the image?' "
+                "or 'describe' to get a general description."
+            ),
+        },
+    }
+    output_type = "string"
+
+    def __init__(self, model: "Model", **kwargs):
+        super().__init__(**kwargs)
+        self.model = model
+
+    def forward(self, image: Any, question: str) -> str:
+        from .models import ChatMessage, MessageRole
+
+        messages = [
+            ChatMessage(
+                role=MessageRole.USER,
+                content=[
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": question},
+                ],
+            )
+        ]
+        response = self.model.generate(messages)
+        return response.content or ""
+
+
 TOOL_MAPPING = {
     tool_class.name: tool_class
     for tool_class in [
@@ -649,6 +719,7 @@ TOOL_MAPPING = {
 
 __all__ = [
     "ApiWebSearchTool",
+    "ImageAnalysisTool",
     "PythonInterpreterTool",
     "FinalAnswerTool",
     "UserInputTool",
