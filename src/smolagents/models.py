@@ -1156,6 +1156,12 @@ class ApiModel(Model):
             Wether to retry on rate limit errors, up to RETRY_MAX_ATTEMPTS times. Defaults to True.
         **kwargs:
             Additional keyword arguments to forward to the underlying model completion call.
+
+    Note:
+        When passing images in messages, local images must be provided as PIL Image objects (which are
+        automatically encoded to base64 data URLs before being sent to the API), or as already
+        base64-encoded strings. Local file paths cannot be used because the remote API server has no
+        access to your local filesystem.
     """
 
     def __init__(
@@ -1219,6 +1225,12 @@ class LiteLLMModel(ApiModel):
             Defaults to `True` for models that start with "ollama", "groq", "cerebras".
         **kwargs:
             Additional keyword arguments to forward to the underlying LiteLLM completion call.
+
+    Note:
+        When passing images in messages, local images must be provided as PIL Image objects (which are
+        automatically encoded to base64 data URLs before being sent to the API), or as already
+        base64-encoded strings. Local file paths cannot be used because the remote API server has no
+        access to your local filesystem.
     """
 
     def __init__(
@@ -1496,6 +1508,12 @@ class InferenceClientModel(ApiModel):
         ValueError:
             If the model name is not provided.
 
+    Note:
+        When passing images in messages, local images must be provided as PIL Image objects (which are
+        automatically encoded to base64 data URLs before being sent to the API), or as already
+        base64-encoded strings. Local file paths cannot be used because the remote API server has no
+        access to your local filesystem.
+
     Example:
     ```python
     >>> engine = InferenceClientModel(
@@ -1666,6 +1684,12 @@ class OpenAIModel(ApiModel):
             Whether to flatten messages as text.
         **kwargs:
             Additional keyword arguments to forward to the underlying OpenAI API completion call, for instance `temperature`.
+
+    Note:
+        When passing images in messages, local images must be provided as PIL Image objects (which are
+        automatically encoded to base64 data URLs before being sent to the API), or as already
+        base64-encoded strings. Local file paths cannot be used because the remote API server has no
+        access to your local filesystem.
     """
 
     def __init__(
@@ -1892,6 +1916,12 @@ class AmazonBedrockModel(ApiModel):
             Whether to flatten messages as text.
         **kwargs:
             Additional keyword arguments to forward to the underlying Amazon Bedrock model converse call.
+
+    Note:
+        When passing images in messages, local images must be provided as PIL Image objects (which are
+        automatically encoded to base64 data URLs before being sent to the API), or as already
+        base64-encoded strings. Local file paths cannot be used because the remote API server has no
+        access to your local filesystem.
 
     Examples:
         Creating a model instance with default settings:
