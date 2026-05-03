@@ -103,7 +103,7 @@ print(result)
 ### 🔍 ImageAnalysisTool — Dedicated Image Q&A Tool
 
 `ImageAnalysisTool` wraps a vision-capable model as a smolagents `Tool` so that any agent
-can ask targeted questions about images — object detection, scene description, OCR, colour
+can ask targeted questions about images — object detection, scene description, OCR, color
 analysis, and more.
 
 ```python
@@ -137,7 +137,7 @@ It ships with five worked examples covering the most common VLM tasks:
 | 1 | Detect all objects and list them |
 | 2 | Count people and describe their activities |
 | 3 | Extract and OCR visible text / headlines |
-| 4 | Identify dominant colour per image quadrant |
+| 4 | Identify dominant color per image quadrant |
 | 5 | Describe scene and classify as indoor / outdoor / urban / nature |
 
 Pass the template path to `VLMCodeAgent` (or any `CodeAgent`) via the `prompt_templates` argument:

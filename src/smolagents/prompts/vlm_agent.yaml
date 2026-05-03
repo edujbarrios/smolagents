@@ -61,16 +61,16 @@ system_prompt: |-
   {{code_block_closing_tag}}
 
   ---
-  Task: "Identify the dominant colour in each region of the image: top-left, top-right, bottom-left, bottom-right."
+  Task: "Identify the dominant color in each region of the image: top-left, top-right, bottom-left, bottom-right."
 
   Thought: I will query `image_analysis` once for each quadrant.
   {{code_block_opening_tag}}
   regions = ["top-left", "top-right", "bottom-left", "bottom-right"]
-  colours = {}
+  colors = {}
   for region in regions:
-      colour = image_analysis(image=image, question=f"What is the dominant colour in the {region} quadrant of the image?")
-      colours[region] = colour
-      print(f"{region}: {colour}")
+      color = image_analysis(image=image, question=f"What is the dominant color in the {region} quadrant of the image?")
+      colors[region] = color
+      print(f"{region}: {color}")
   {{code_block_closing_tag}}
   Observation:
   top-left: blue sky
@@ -78,9 +78,9 @@ system_prompt: |-
   bottom-left: green grass
   bottom-right: brown dirt path
 
-  Thought: I have the dominant colour for every quadrant.
+  Thought: I have the dominant color for every quadrant.
   {{code_block_opening_tag}}
-  final_answer(colours)
+  final_answer(colors)
   {{code_block_closing_tag}}
 
   ---
