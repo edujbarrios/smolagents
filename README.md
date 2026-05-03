@@ -18,7 +18,11 @@ For runtime only (no dev/test tooling):
 pip install -e ".[toolkit]"
 ```
 
+> **Note:** `pip install 'smolagents[openai]'` (or `pip install openai`) is required for `OpenAIModel`.
+
 For general documentation on `smolagents`, see the [upstream docs](https://huggingface.co/docs/smolagents/index).
+
+---
 
 ## Using OpenAI-Compatible APIs
 
@@ -37,17 +41,17 @@ Set `api_base` and `api_key` to point at your preferred provider:
 from smolagents import OpenAIModel
 
 model = OpenAIModel(
-    model_id="meta-llama/Llama-3-8b-chat-hf",  # any model served by your provider
+    model_id="gpt-4o",          # any vision-capable model served by your provider
     api_base="https://llm7.io/v1",
     api_key="YOUR_API_KEY",
 )
 ```
 
-> **Note:** `pip install 'smolagents[openai]'` (or `pip install openai`) is required for `OpenAIModel`.
+---
 
 ## Fork Add-ons
 
-The following features extend the upstream `smolagents` library.
+The following features extend the upstream `smolagents` library with VLM capabilities.
 
 ---
 
@@ -57,22 +61,41 @@ The following features extend the upstream `smolagents` library.
 It automatically adds vision-oriented instructions to the system prompt and flags the run as a VLM
 run in the [`UsageTracker`](#-usagetracker--usage-statistics).
 
+#### Detect objects in an image
+
 ```python
 import PIL.Image
 from smolagents import OpenAIModel, ImageAnalysisTool, VLMCodeAgent
 
-# Works with any OpenAI-compatible endpoint: LLM7.io, Groq, Together AI, local vLLM, etc.
 model = OpenAIModel(
-    model_id="gpt-4o",          # replace with any vision-capable model available on your provider
-    api_base="https://llm7.io/v1",  # or any OpenAI-compatible base URL
+    model_id="gpt-4o",
+    api_base="https://llm7.io/v1",
     api_key="YOUR_API_KEY",
 )
 agent = VLMCodeAgent(
     tools=[ImageAnalysisTool(model=model)],
     model=model,
 )
+image = PIL.Image.open("street_scene.jpg")
+result = agent.run("Detect and list all objects visible in this image.", images=[image])
+print(result)
+# e.g. "Detected objects: car, traffic light, pedestrian, bicycle, tree, building"
+```
+
+#### Analyse an image with a HuggingFace model
+
+```python
+import PIL.Image
+from smolagents import InferenceClientModel, ImageAnalysisTool, VLMCodeAgent
+
+model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+agent = VLMCodeAgent(
+    tools=[ImageAnalysisTool(model=model)],
+    model=model,
+)
 image = PIL.Image.open("photo.jpg")
-result = agent.run("What is shown in the image?", images=[image])
+result = agent.run("Describe the scene and identify the main subjects.", images=[image])
+print(result)
 ```
 
 ---
@@ -80,10 +103,12 @@ result = agent.run("What is shown in the image?", images=[image])
 ### 🔍 ImageAnalysisTool — Dedicated Image Q&A Tool
 
 `ImageAnalysisTool` wraps a vision-capable model as a smolagents `Tool` so that any agent
-(not only `VLMCodeAgent`) can ask targeted questions about images.
+can ask targeted questions about images — object detection, scene description, OCR, color
+analysis, and more.
 
 ```python
-from smolagents import OpenAIModel, ImageAnalysisTool, CodeAgent
+import PIL.Image
+from smolagents import OpenAIModel, ImageAnalysisTool, VLMCodeAgent
 
 model = OpenAIModel(
     model_id="gpt-4o",
@@ -91,8 +116,54 @@ model = OpenAIModel(
     api_key="YOUR_API_KEY",
 )
 analysis_tool = ImageAnalysisTool(model=model)
+agent = VLMCodeAgent(tools=[analysis_tool], model=model)
 
-agent = CodeAgent(tools=[analysis_tool], model=model)
+image = PIL.Image.open("receipt.jpg")
+result = agent.run("Read all text visible in this image and extract the total amount.", images=[image])
+print(result)
+# e.g. "Total amount: $47.83"
+```
+
+---
+
+### 🗂️ VLM Agent Template (Jinja2)
+
+A ready-to-use **Jinja2 system-prompt template** for VLM agents lives at
+[`src/smolagents/prompts/vlm_agent.yaml`](src/smolagents/prompts/vlm_agent.yaml).
+It ships with five worked examples covering the most common VLM tasks:
+
+| # | Example task |
+|---|---|
+| 1 | Detect all objects and list them |
+| 2 | Count people and describe their activities |
+| 3 | Extract and OCR visible text / headlines |
+| 4 | Identify dominant color per image quadrant |
+| 5 | Describe scene and classify as indoor / outdoor / urban / nature |
+
+Pass the template path to `VLMCodeAgent` (or any `CodeAgent`) via the `prompt_templates` argument:
+
+```python
+import PIL.Image
+from smolagents import OpenAIModel, ImageAnalysisTool, VLMCodeAgent
+from smolagents.utils import load_prompt_templates
+
+model = OpenAIModel(
+    model_id="gpt-4o",
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_API_KEY",
+)
+agent = VLMCodeAgent(
+    tools=[ImageAnalysisTool(model=model)],
+    model=model,
+    prompt_templates=load_prompt_templates("src/smolagents/prompts/vlm_agent.yaml"),
+)
+
+image = PIL.Image.open("cityscape.jpg")
+result = agent.run(
+    "Identify every object in the foreground and background of this cityscape photo.",
+    images=[image],
+)
+print(result)
 ```
 
 ---
@@ -103,7 +174,7 @@ agent = CodeAgent(tools=[analysis_tool], model=model)
 run: models used, tools called, token counts, and VLM-vs-text run breakdown.  
 It is updated **automatically** — no extra code needed in your agents.
 
-#### VLM example — HuggingFace model
+#### Object detection with HuggingFace model + usage tracking
 
 ```python
 import PIL.Image
@@ -113,18 +184,19 @@ from smolagents.monitoring import get_usage_tracker
 model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
 agent = VLMCodeAgent(tools=[ImageAnalysisTool(model=model)], model=model)
 
-image = PIL.Image.open("photo.jpg")
-agent.run("Describe what you see in this image in detail.", images=[image])
+image = PIL.Image.open("market_scene.jpg")
+agent.run("List every item you can see for sale in this market photo.", images=[image])
 
 tracker = get_usage_tracker()
 print(tracker.get_summary())
-# {'run_count': 1, 'vlm_run_count': 1, 'model_invocations': {'meta-llama/Llama-3.2-11B-Vision-Instruct': 1},
+# {'run_count': 1, 'vlm_run_count': 1,
+#  'model_invocations': {'meta-llama/Llama-3.2-11B-Vision-Instruct': 1},
 #  'tool_invocations': {'image_analysis': 1}, 'total_token_usage': {...}}
 
 tracker.reset()  # Clear all counters
 ```
 
-#### VLM example — external OpenAI-compatible API
+#### Image analysis with external OpenAI-compatible API + usage tracking
 
 ```python
 import PIL.Image
@@ -133,20 +205,20 @@ from smolagents.monitoring import get_usage_tracker
 
 model = OpenAIModel(
     model_id="gpt-4o",
-    api_base="https://llm7.io/v1",  # or any OpenAI-compatible URL
+    api_base="https://llm7.io/v1",
     api_key="YOUR_API_KEY",
 )
 agent = VLMCodeAgent(tools=[ImageAnalysisTool(model=model)], model=model)
 
-image = PIL.Image.open("photo.jpg")
-agent.run("Describe what you see in this image in detail.", images=[image])
+image = PIL.Image.open("dashboard.png")
+agent.run("Analyse this dashboard screenshot and summarise the key metrics shown.", images=[image])
 
 tracker = get_usage_tracker()
 print(tracker.get_summary())
 # {'run_count': 1, 'vlm_run_count': 1, 'model_invocations': {'gpt-4o': 1},
 #  'tool_invocations': {'image_analysis': 1}, 'total_token_usage': {...}}
 
-tracker.reset()  # Clear all counters
+tracker.reset()
 ```
 
 > **Parametrized example:** [`examples/vlm_usage_tracking/`](examples/vlm_usage_tracking/)
@@ -156,13 +228,11 @@ tracker.reset()  # Clear all counters
 
 ---
 
-### 🔗 AgentPipeline — Parametrizable Multi-Agent Pipelines
+### 🔗 AgentPipeline — Multi-Agent VLM Pipelines
 
 `AgentFactory` + `AgentConfig` give you a parametrizable, registry-based way to define agents and
-specific tasks, then wire them into reusable pipelines.  Switch models, tools, or instructions by
-changing the config — no code restructuring required.
-
-Four cooperating primitives let you compose agents into reusable, linearly-chained pipelines:
+wire them into reusable pipelines.  Switch models, tools, or instructions by changing the config —
+no code restructuring required.
 
 | Class | Purpose |
 |---|---|
@@ -171,19 +241,83 @@ Four cooperating primitives let you compose agents into reusable, linearly-chain
 | `PipelineStep` | Wraps an agent for use in a pipeline with optional input/output transforms |
 | `AgentPipeline` | Connects agents in sequence; each agent's output becomes the next agent's task |
 
+#### Two-step pipeline: detect objects → generate accessibility description
+
 ```python
 import PIL.Image
-from smolagents import CodeAgent, OpenAIModel, ImageAnalysisTool
+from smolagents import VLMCodeAgent, OpenAIModel, InferenceClientModel, ImageAnalysisTool
 from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
 
-# Any OpenAI-compatible provider: LLM7.io, Groq, Together AI, local vLLM, etc.
+# Vision-capable model for the detection step
 vision_model = OpenAIModel(
-    model_id="gpt-4o",          # vision-capable model
+    model_id="gpt-4o",
     api_base="https://llm7.io/v1",
     api_key="YOUR_API_KEY",
 )
-text_model = OpenAIModel(
-    model_id="gpt-4o-mini",     # lighter model for text tasks
+# Lighter model for the description-writing step
+text_model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+
+factory = AgentFactory()
+
+factory.register(
+    "object_detector",
+    AgentConfig(
+        agent_class=VLMCodeAgent,
+        model=vision_model,
+        tools=[ImageAnalysisTool(model=vision_model)],
+        instructions=(
+            "You detect objects in images. "
+            "Return a structured list of every distinct object you can identify, "
+            "including its approximate position (top/bottom, left/right/centre)."
+        ),
+        max_steps=5,
+    ),
+)
+factory.register(
+    "accessibility_writer",
+    AgentConfig(
+        agent_class=VLMCodeAgent,
+        model=text_model,
+        tools=[ImageAnalysisTool(model=text_model)],
+        instructions=(
+            "Given a structured object list, produce a concise alt-text description "
+            "of the image suitable for screen-reader users."
+        ),
+    ),
+)
+
+pipeline = AgentPipeline([
+    factory.create("object_detector"),
+    factory.create("accessibility_writer"),
+])
+
+image = PIL.Image.open("photo.jpg")
+result = pipeline.run(
+    "Detect all objects in this image, then write an accessibility description.",
+    images=[image],
+)
+print(result)
+```
+
+Agents can also be chained with the `|` operator:
+
+```python
+detector = factory.create("object_detector")
+writer   = factory.create("accessibility_writer")
+
+pipeline = detector | writer
+result = pipeline.run("Detect objects and write an accessibility description.", images=[image])
+```
+
+#### Three-step pipeline: analyse medical image → flag anomalies → write report
+
+```python
+import PIL.Image
+from smolagents import VLMCodeAgent, OpenAIModel, ImageAnalysisTool
+from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
+
+model = OpenAIModel(
+    model_id="gpt-4o",
     api_base="https://llm7.io/v1",
     api_key="YOUR_API_KEY",
 )
@@ -193,160 +327,51 @@ factory = AgentFactory()
 factory.register(
     "image_analyser",
     AgentConfig(
-        agent_class=CodeAgent,
-        model=vision_model,
-        tools=[ImageAnalysisTool(model=vision_model)],
-        instructions=(
-            "You analyse images in detail. "
-            "Describe all visible objects, colours, text, spatial relationships, and any notable features."
-        ),
+        agent_class=VLMCodeAgent,
+        model=model,
+        tools=[ImageAnalysisTool(model=model)],
+        instructions="Describe every visual feature present in this medical scan in clinical detail.",
         max_steps=5,
     ),
 )
 factory.register(
-    "reporter",
+    "anomaly_detector",
     AgentConfig(
-        agent_class=CodeAgent,
-        model=text_model,
+        agent_class=VLMCodeAgent,
+        model=model,
+        tools=[ImageAnalysisTool(model=model)],
         instructions=(
-            "Given a detailed image analysis, produce a concise, well-structured report "
-            "suitable for a non-technical audience."
+            "Given a detailed image description, list any features that appear abnormal "
+            "or warrant further investigation."
+        ),
+    ),
+)
+factory.register(
+    "report_writer",
+    AgentConfig(
+        agent_class=VLMCodeAgent,
+        model=model,
+        tools=[ImageAnalysisTool(model=model)],
+        instructions=(
+            "Given an image description and a list of anomalies, produce a concise "
+            "radiology-style report with Findings and Impression sections."
         ),
     ),
 )
 
 pipeline = AgentPipeline([
     factory.create("image_analyser"),
-    factory.create("reporter"),
+    factory.create("anomaly_detector"),
+    factory.create("report_writer"),
 ])
 
-image = PIL.Image.open("photo.jpg")
-result = pipeline.run("Analyse this image and produce a reader-friendly report.", images=[image])
+scan = PIL.Image.open("chest_xray.jpg")
+report = pipeline.run("Analyse this chest X-ray and write a radiology report.", images=[scan])
+print(report)
 ```
 
-Agents can also be chained with the `|` operator:
-
-```python
-pipeline = image_analyser_agent | reporter_agent
-result = pipeline.run("…", images=[image])
-```
-
----
-
-### 🤝 Combining HuggingFace and LLM7.io Agents
-
-Because every agent just needs a model object, you can freely mix
-`InferenceClientModel` (HuggingFace Inference API) and `OpenAIModel`
-(LLM7.io or any OpenAI-compatible endpoint) in the same pipeline.
-This lets you, for example, run a heavy research step on a large
-HuggingFace-hosted model and then summarise the result with a fast
-model served by LLM7.io — or vice-versa.
-
-#### Simple two-agent pipeline (HuggingFace → LLM7.io)
-
-```python
-from smolagents import CodeAgent, InferenceClientModel, OpenAIModel
-from smolagents.default_tools import DuckDuckGoSearchTool
-from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
-
-# Step 1 – research agent backed by a HuggingFace-hosted model
-hf_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
-
-# Step 2 – summariser backed by a LLM7.io-served model
-llm7_model = OpenAIModel(
-    model_id="meta-llama/Llama-3-8b-chat-hf",
-    api_base="https://llm7.io/v1",
-    api_key="YOUR_LLM7_API_KEY",
-)
-
-factory = AgentFactory()
-
-factory.register(
-    "researcher",
-    AgentConfig(
-        agent_class=CodeAgent,
-        model=hf_model,
-        tools=[DuckDuckGoSearchTool()],
-        instructions="You research topics thoroughly and return detailed findings.",
-        max_steps=10,
-    ),
-)
-factory.register(
-    "summariser",
-    AgentConfig(
-        agent_class=CodeAgent,
-        model=llm7_model,
-        instructions="Summarise the provided research into three clear bullet points.",
-    ),
-)
-
-pipeline = AgentPipeline([
-    factory.create("researcher"),
-    factory.create("summariser"),
-])
-
-result = pipeline.run("What are the latest breakthroughs in quantum computing?")
-print(result)
-```
-
-Or equivalently using the `|` operator:
-
-```python
-researcher_agent = factory.create("researcher")
-summariser_agent = factory.create("summariser")
-
-pipeline = researcher_agent | summariser_agent
-result = pipeline.run("What are the latest breakthroughs in quantum computing?")
-```
-
-#### Reversed direction (LLM7.io → HuggingFace)
-
-You can just as easily reverse the order — use a LLM7.io model for
-the first step and a HuggingFace model for the second:
-
-```python
-from smolagents import CodeAgent, InferenceClientModel, OpenAIModel
-from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
-
-llm7_model = OpenAIModel(
-    model_id="gpt-4o-mini",
-    api_base="https://llm7.io/v1",
-    api_key="YOUR_LLM7_API_KEY",
-)
-hf_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
-
-factory = AgentFactory()
-
-factory.register(
-    "drafter",
-    AgentConfig(
-        agent_class=CodeAgent,
-        model=llm7_model,
-        instructions="Draft a concise outline for the user's topic.",
-    ),
-)
-factory.register(
-    "expander",
-    AgentConfig(
-        agent_class=CodeAgent,
-        model=hf_model,
-        instructions="Expand the provided outline into a detailed, well-written article.",
-        max_steps=15,
-    ),
-)
-
-pipeline = AgentPipeline([
-    factory.create("drafter"),
-    factory.create("expander"),
-])
-
-result = pipeline.run("Write an article about the history of the internet.")
-print(result)
-```
-
-> **Tip:** Any number of agents from any mix of providers can be chained
-> in a single `AgentPipeline` — there is no limit on the number of steps
-> or the combination of backends.
+> **Tip:** Any number of VLM agents from any mix of providers can be chained in a single
+> `AgentPipeline` — there is no limit on the number of steps or the combination of backends.
 
 ---
 
