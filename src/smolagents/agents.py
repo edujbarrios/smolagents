@@ -1865,6 +1865,7 @@ class VLMCodeAgent(CodeAgent):
 
     Example:
         ```python
+        import os
         import PIL.Image
         from smolagents import InferenceClientModel, ImageAnalysisTool, VLMCodeAgent
 
@@ -1873,7 +1874,8 @@ class VLMCodeAgent(CodeAgent):
             tools=[ImageAnalysisTool(model=model)],
             model=model,
         )
-        image = PIL.Image.open("photo.jpg")
+        image = PIL.Image.open("photo.jpg") if os.path.exists("photo.jpg") \
+            else PIL.Image.new("RGB", (128, 128), color=(200, 100, 50))
         result = agent.run("What is shown in the image?", images=[image])
         ```
     """
