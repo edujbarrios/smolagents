@@ -64,6 +64,7 @@ run in the [`UsageTracker`](#-usagetracker--usage-statistics).
 #### Detect objects in an image
 
 ```python
+import os
 import PIL.Image
 from smolagents import OpenAIModel, ImageAnalysisTool, VLMCodeAgent
 
@@ -76,7 +77,9 @@ agent = VLMCodeAgent(
     tools=[ImageAnalysisTool(model=model)],
     model=model,
 )
-image = PIL.Image.open("street_scene.jpg")
+# Load a real image or create a simple test image to try it out
+image = PIL.Image.open("street_scene.jpg") if os.path.exists("street_scene.jpg") \
+    else PIL.Image.new("RGB", (128, 128), color=(200, 100, 50))
 result = agent.run("Detect and list all objects visible in this image.", images=[image])
 print(result)
 # e.g. "Detected objects: car, traffic light, pedestrian, bicycle, tree, building"
@@ -85,6 +88,7 @@ print(result)
 #### Analyse an image with a HuggingFace model
 
 ```python
+import os
 import PIL.Image
 from smolagents import InferenceClientModel, ImageAnalysisTool, VLMCodeAgent
 
@@ -93,7 +97,9 @@ agent = VLMCodeAgent(
     tools=[ImageAnalysisTool(model=model)],
     model=model,
 )
-image = PIL.Image.open("photo.jpg")
+# Load a real image or create a simple test image to try it out
+image = PIL.Image.open("photo.jpg") if os.path.exists("photo.jpg") \
+    else PIL.Image.new("RGB", (128, 128), color=(50, 150, 200))
 result = agent.run("Describe the scene and identify the main subjects.", images=[image])
 print(result)
 ```
@@ -107,6 +113,7 @@ can ask targeted questions about images — object detection, scene description,
 analysis, and more.
 
 ```python
+import os
 import PIL.Image
 from smolagents import OpenAIModel, ImageAnalysisTool, VLMCodeAgent
 
@@ -118,7 +125,9 @@ model = OpenAIModel(
 analysis_tool = ImageAnalysisTool(model=model)
 agent = VLMCodeAgent(tools=[analysis_tool], model=model)
 
-image = PIL.Image.open("receipt.jpg")
+# Load a real image or create a simple test image to try it out
+image = PIL.Image.open("receipt.jpg") if os.path.exists("receipt.jpg") \
+    else PIL.Image.new("RGB", (128, 128), color=(240, 230, 210))
 result = agent.run("Read all text visible in this image and extract the total amount.", images=[image])
 print(result)
 # e.g. "Total amount: $47.83"
@@ -143,6 +152,7 @@ It ships with five worked examples covering the most common VLM tasks:
 Pass the template path to `VLMCodeAgent` (or any `CodeAgent`) via the `prompt_templates` argument:
 
 ```python
+import os
 import PIL.Image
 from smolagents import OpenAIModel, ImageAnalysisTool, VLMCodeAgent
 from smolagents.utils import load_prompt_templates
@@ -158,7 +168,9 @@ agent = VLMCodeAgent(
     prompt_templates=load_prompt_templates("src/smolagents/prompts/vlm_agent.yaml"),
 )
 
-image = PIL.Image.open("cityscape.jpg")
+# Load a real image or create a simple test image to try it out
+image = PIL.Image.open("cityscape.jpg") if os.path.exists("cityscape.jpg") \
+    else PIL.Image.new("RGB", (128, 128), color=(100, 150, 200))
 result = agent.run(
     "Identify every object in the foreground and background of this cityscape photo.",
     images=[image],
@@ -177,6 +189,7 @@ It is updated **automatically** — no extra code needed in your agents.
 #### Object detection with HuggingFace model + usage tracking
 
 ```python
+import os
 import PIL.Image
 from smolagents import ImageAnalysisTool, InferenceClientModel, VLMCodeAgent
 from smolagents.monitoring import get_usage_tracker
@@ -184,7 +197,9 @@ from smolagents.monitoring import get_usage_tracker
 model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
 agent = VLMCodeAgent(tools=[ImageAnalysisTool(model=model)], model=model)
 
-image = PIL.Image.open("market_scene.jpg")
+# Load a real image or create a simple test image to try it out
+image = PIL.Image.open("market_scene.jpg") if os.path.exists("market_scene.jpg") \
+    else PIL.Image.new("RGB", (128, 128), color=(180, 220, 130))
 agent.run("List every item you can see for sale in this market photo.", images=[image])
 
 tracker = get_usage_tracker()
@@ -199,6 +214,7 @@ tracker.reset()  # Clear all counters
 #### Image analysis with external OpenAI-compatible API + usage tracking
 
 ```python
+import os
 import PIL.Image
 from smolagents import ImageAnalysisTool, OpenAIModel, VLMCodeAgent
 from smolagents.monitoring import get_usage_tracker
@@ -210,7 +226,9 @@ model = OpenAIModel(
 )
 agent = VLMCodeAgent(tools=[ImageAnalysisTool(model=model)], model=model)
 
-image = PIL.Image.open("dashboard.png")
+# Load a real image or create a simple test image to try it out
+image = PIL.Image.open("dashboard.png") if os.path.exists("dashboard.png") \
+    else PIL.Image.new("RGB", (128, 128), color=(60, 80, 120))
 agent.run("Analyse this dashboard screenshot and summarise the key metrics shown.", images=[image])
 
 tracker = get_usage_tracker()
@@ -244,6 +262,7 @@ no code restructuring required.
 #### Two-step pipeline: detect objects → generate accessibility description
 
 ```python
+import os
 import PIL.Image
 from smolagents import VLMCodeAgent, OpenAIModel, InferenceClientModel, ImageAnalysisTool
 from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
@@ -291,7 +310,9 @@ pipeline = AgentPipeline([
     factory.create("accessibility_writer"),
 ])
 
-image = PIL.Image.open("photo.jpg")
+# Load a real image or create a simple test image to try it out
+image = PIL.Image.open("photo.jpg") if os.path.exists("photo.jpg") \
+    else PIL.Image.new("RGB", (128, 128), color=(80, 120, 200))
 result = pipeline.run(
     "Detect all objects in this image, then write an accessibility description.",
     images=[image],
@@ -312,6 +333,7 @@ result = pipeline.run("Detect objects and write an accessibility description.", 
 #### Three-step pipeline: analyse medical image → flag anomalies → write report
 
 ```python
+import os
 import PIL.Image
 from smolagents import VLMCodeAgent, OpenAIModel, ImageAnalysisTool
 from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
@@ -365,7 +387,9 @@ pipeline = AgentPipeline([
     factory.create("report_writer"),
 ])
 
-scan = PIL.Image.open("chest_xray.jpg")
+# Load a real image or create a simple test image to try it out
+scan = PIL.Image.open("chest_xray.jpg") if os.path.exists("chest_xray.jpg") \
+    else PIL.Image.new("L", (128, 128), color=180)
 report = pipeline.run("Analyse this chest X-ray and write a radiology report.", images=[scan])
 print(report)
 ```
