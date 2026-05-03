@@ -1,26 +1,53 @@
-# smolagents — Research Prototype by Eduardo J. Barrios
+# smolagents — VLM Fork
 
-> **This is a personal research prototype by [Eduardo J. Barrios](https://github.com/edujbarrios), not a community fork.**
-> It is based on [huggingface/smolagents](https://github.com/huggingface/smolagents) and extends it with experimental features for research and rapid prototyping.
-> It is **not published to PyPI** — install directly from source:
->
-> ```bash
-> git clone https://github.com/edujbarrios/smolagents.git
-> cd smolagents
-> pip install -e ".[dev]"
-> ```
->
-> For runtime only (no dev/test tooling):
->
-> ```bash
-> pip install -e ".[toolkit]"
-> ```
+This is a fork of [huggingface/smolagents](https://github.com/huggingface/smolagents) that extends it with
+**vision-language (VLM) task support**, parametrizable multi-agent pipelines, and first-class
+integration with any **OpenAI-compatible API** (e.g. [LLM7.io](https://llm7.io), OpenAI, Groq, Together AI, local vLLM, etc.).
+
+Install directly from source (not published to PyPI):
+
+```bash
+git clone https://github.com/edujbarrios/smolagents.git
+cd smolagents
+pip install -e ".[dev]"
+```
+
+For runtime only (no dev/test tooling):
+
+```bash
+pip install -e ".[toolkit]"
+```
 
 For general documentation on `smolagents`, see the [upstream docs](https://huggingface.co/docs/smolagents/index).
 
+## Using OpenAI-Compatible APIs
+
+All examples in this fork use `OpenAIModel`, which connects to any OpenAI-compatible endpoint.
+Set `api_base` and `api_key` to point at your preferred provider:
+
+| Provider | `api_base` |
+|---|---|
+| [LLM7.io](https://llm7.io) | `https://llm7.io/v1` |
+| OpenAI | `https://api.openai.com/v1` (default) |
+| Groq | `https://api.groq.com/openai/v1` |
+| Together AI | `https://api.together.xyz/v1` |
+| Local vLLM | `http://localhost:8000/v1` |
+
+```python
+from smolagents import OpenAIModel
+
+model = OpenAIModel(
+    model_id="meta-llama/Llama-3-8b-chat-hf",  # any model served by your provider
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_API_KEY",
+)
+```
+
+> **Note:** `pip install 'smolagents[openai]'` (or `pip install openai`) is required for `OpenAIModel`.
+
 ## Fork Add-ons
 
-The following features are **exclusive to this prototype** and are not part of upstream `smolagents`.
+The following features extend the upstream `smolagents` library.
 
 ---
 
@@ -32,9 +59,14 @@ run in the [`UsageTracker`](#-usagetracker--usage-statistics).
 
 ```python
 import PIL.Image
-from smolagents import InferenceClientModel, ImageAnalysisTool, VLMCodeAgent
+from smolagents import OpenAIModel, ImageAnalysisTool, VLMCodeAgent
 
-model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+# Works with any OpenAI-compatible endpoint: LLM7.io, Groq, Together AI, local vLLM, etc.
+model = OpenAIModel(
+    model_id="gpt-4o",          # replace with any vision-capable model available on your provider
+    api_base="https://llm7.io/v1",  # or any OpenAI-compatible base URL
+    api_key="YOUR_API_KEY",
+)
 agent = VLMCodeAgent(
     tools=[ImageAnalysisTool(model=model)],
     model=model,
@@ -51,9 +83,13 @@ result = agent.run("What is shown in the image?", images=[image])
 (not only `VLMCodeAgent`) can ask targeted questions about images.
 
 ```python
-from smolagents import InferenceClientModel, ImageAnalysisTool, CodeAgent
+from smolagents import OpenAIModel, ImageAnalysisTool, CodeAgent
 
-model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+model = OpenAIModel(
+    model_id="gpt-4o",
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_API_KEY",
+)
 analysis_tool = ImageAnalysisTool(model=model)
 
 agent = CodeAgent(tools=[analysis_tool], model=model)
@@ -68,10 +104,14 @@ run: models used, tools called, token counts, and VLM-vs-text run breakdown.
 It is updated **automatically** — no extra code needed in your agents.
 
 ```python
-from smolagents import CodeAgent, InferenceClientModel
+from smolagents import CodeAgent, OpenAIModel
 from smolagents.monitoring import get_usage_tracker
 
-model = InferenceClientModel()
+model = OpenAIModel(
+    model_id="gpt-4o-mini",
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_API_KEY",
+)
 agent = CodeAgent(tools=[], model=model)
 agent.run("What is 2+2?")
 
@@ -85,7 +125,11 @@ tracker.reset()  # Clear all counters
 
 ---
 
-### 🔗 AgentPipeline — Multi-Agent Pipelines
+### 🔗 AgentPipeline — Parametrizable Multi-Agent Pipelines
+
+`AgentFactory` + `AgentConfig` give you a parametrizable, registry-based way to define agents and
+specific tasks, then wire them into reusable pipelines.  Switch models, tools, or instructions by
+changing the config — no code restructuring required.
 
 Four cooperating primitives let you compose agents into reusable, linearly-chained pipelines:
 
@@ -98,13 +142,20 @@ Four cooperating primitives let you compose agents into reusable, linearly-chain
 
 ```python
 import PIL.Image
-from smolagents import CodeAgent, InferenceClientModel, ImageAnalysisTool
+from smolagents import CodeAgent, OpenAIModel, ImageAnalysisTool
 from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
 
-# Vision-capable model for image analysis
-vision_model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
-# Text model for the final reporting step
-text_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+# Any OpenAI-compatible provider: LLM7.io, Groq, Together AI, local vLLM, etc.
+vision_model = OpenAIModel(
+    model_id="gpt-4o",          # vision-capable model
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_API_KEY",
+)
+text_model = OpenAIModel(
+    model_id="gpt-4o-mini",     # lighter model for text tasks
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_API_KEY",
+)
 
 factory = AgentFactory()
 
