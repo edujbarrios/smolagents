@@ -1,0 +1,50 @@
+# VLM Usage Tracking — Configuration
+#
+# This file parametrizes both the HuggingFace (InferenceClientModel) and
+# external-API (OpenAIModel) VLM examples in vlm_usage_tracking.py.
+# Edit the values below instead of touching the Python script.
+
+# ---------------------------------------------------------------------------
+# HuggingFace Inference Client (InferenceClientModel)
+# Uses the HuggingFace Inference API — set HF_TOKEN in your environment or
+# replace the token value here.
+# ---------------------------------------------------------------------------
+huggingface:
+  # Any multimodal checkpoint available on the HF Hub / Inference API.
+  model_id: "meta-llama/Llama-3.2-11B-Vision-Instruct"
+  # Optional provider routing (e.g. "nebius", "together", "replicate").
+  # Leave as null to use the default HF Inference API endpoint.
+  provider: null
+  # HF API token — leave as null to read from the HF_TOKEN env variable.
+  token: null
+
+# ---------------------------------------------------------------------------
+# External OpenAI-compatible API (OpenAIModel)
+# Works with OpenAI, Groq, Together AI, local vLLM, LLM7.io, etc.
+# ---------------------------------------------------------------------------
+external_api:
+  # Model identifier as understood by the target provider.
+  model_id: "gpt-4o"
+  # Base URL of the OpenAI-compatible endpoint.
+  # Examples:
+  #   OpenAI:      https://api.openai.com/v1
+  #   LLM7.io:     https://llm7.io/v1
+  #   Groq:        https://api.groq.com/openai/v1
+  #   Together AI: https://api.together.xyz/v1
+  #   Local vLLM:  http://localhost:8000/v1
+  api_base: "https://api.openai.com/v1"
+  # API key — leave as null to read from the OPENAI_API_KEY env variable.
+  api_key: null
+
+# ---------------------------------------------------------------------------
+# Shared agent settings
+# ---------------------------------------------------------------------------
+agent:
+  # Maximum number of steps the VLMCodeAgent is allowed to take per run.
+  max_steps: 5
+  # Path to the image used in both VLM examples.
+  # Can be an absolute path or a path relative to this config file.
+  # Set to null to run the examples with a synthetic in-memory image instead.
+  image_path: null
+  # The question posed to the VLM agent about the image.
+  task: "Describe what you see in this image in detail."
