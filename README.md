@@ -97,45 +97,56 @@ Four cooperating primitives let you compose agents into reusable, linearly-chain
 | `AgentPipeline` | Connects agents in sequence; each agent's output becomes the next agent's task |
 
 ```python
-from smolagents import CodeAgent, InferenceClientModel
-from smolagents import WebSearchTool
+import PIL.Image
+from smolagents import CodeAgent, InferenceClientModel, ImageAnalysisTool
 from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
 
-model = InferenceClientModel(model_id="Qwen/Qwen3-Next-80B-A3B-Thinking")
+# Vision-capable model for image analysis
+vision_model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+# Text model for the final reporting step
+text_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+
 factory = AgentFactory()
 
 factory.register(
-    "researcher",
+    "image_analyser",
     AgentConfig(
         agent_class=CodeAgent,
-        model=model,
-        tools=[WebSearchTool()],
-        instructions="You research topics thoroughly.",
-        max_steps=10,
+        model=vision_model,
+        tools=[ImageAnalysisTool(model=vision_model)],
+        instructions=(
+            "You analyse images in detail. "
+            "Describe all visible objects, colours, text, spatial relationships, and any notable features."
+        ),
+        max_steps=5,
     ),
 )
 factory.register(
-    "summariser",
+    "reporter",
     AgentConfig(
         agent_class=CodeAgent,
-        model=model,
-        instructions="Summarise the provided research concisely.",
+        model=text_model,
+        instructions=(
+            "Given a detailed image analysis, produce a concise, well-structured report "
+            "suitable for a non-technical audience."
+        ),
     ),
 )
 
 pipeline = AgentPipeline([
-    factory.create("researcher"),
-    factory.create("summariser"),
+    factory.create("image_analyser"),
+    factory.create("reporter"),
 ])
 
-result = pipeline.run("What are the latest advances in quantum computing?")
+image = PIL.Image.open("photo.jpg")
+result = pipeline.run("Analyse this image and produce a reader-friendly report.", images=[image])
 ```
 
 Agents can also be chained with the `|` operator:
 
 ```python
-pipeline = researcher_agent | summariser_agent
-result = pipeline.run("…")
+pipeline = image_analyser_agent | reporter_agent
+result = pipeline.run("…", images=[image])
 ```
 
 ---
