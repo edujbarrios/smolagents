@@ -233,6 +233,123 @@ result = pipeline.run("…", images=[image])
 
 ---
 
+### 🤝 Combining HuggingFace and LLM7.io Agents
+
+Because every agent just needs a model object, you can freely mix
+`InferenceClientModel` (HuggingFace Inference API) and `OpenAIModel`
+(LLM7.io or any OpenAI-compatible endpoint) in the same pipeline.
+This lets you, for example, run a heavy research step on a large
+HuggingFace-hosted model and then summarise the result with a fast
+model served by LLM7.io — or vice-versa.
+
+#### Simple two-agent pipeline (HuggingFace → LLM7.io)
+
+```python
+from smolagents import CodeAgent, InferenceClientModel, OpenAIModel
+from smolagents.default_tools import DuckDuckGoSearchTool
+from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
+
+# Step 1 – research agent backed by a HuggingFace-hosted model
+hf_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+
+# Step 2 – summariser backed by a LLM7.io-served model
+llm7_model = OpenAIModel(
+    model_id="meta-llama/Llama-3-8b-chat-hf",
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_LLM7_API_KEY",
+)
+
+factory = AgentFactory()
+
+factory.register(
+    "researcher",
+    AgentConfig(
+        agent_class=CodeAgent,
+        model=hf_model,
+        tools=[DuckDuckGoSearchTool()],
+        instructions="You research topics thoroughly and return detailed findings.",
+        max_steps=10,
+    ),
+)
+factory.register(
+    "summariser",
+    AgentConfig(
+        agent_class=CodeAgent,
+        model=llm7_model,
+        instructions="Summarise the provided research into three clear bullet points.",
+    ),
+)
+
+pipeline = AgentPipeline([
+    factory.create("researcher"),
+    factory.create("summariser"),
+])
+
+result = pipeline.run("What are the latest breakthroughs in quantum computing?")
+print(result)
+```
+
+Or equivalently using the `|` operator:
+
+```python
+researcher_agent = factory.create("researcher")
+summariser_agent = factory.create("summariser")
+
+pipeline = researcher_agent | summariser_agent
+result = pipeline.run("What are the latest breakthroughs in quantum computing?")
+```
+
+#### Reversed direction (LLM7.io → HuggingFace)
+
+You can just as easily reverse the order — use a LLM7.io model for
+the first step and a HuggingFace model for the second:
+
+```python
+from smolagents import CodeAgent, InferenceClientModel, OpenAIModel
+from smolagents.pipeline import AgentConfig, AgentFactory, AgentPipeline
+
+llm7_model = OpenAIModel(
+    model_id="gpt-4o-mini",
+    api_base="https://llm7.io/v1",
+    api_key="YOUR_LLM7_API_KEY",
+)
+hf_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+
+factory = AgentFactory()
+
+factory.register(
+    "drafter",
+    AgentConfig(
+        agent_class=CodeAgent,
+        model=llm7_model,
+        instructions="Draft a concise outline for the user's topic.",
+    ),
+)
+factory.register(
+    "expander",
+    AgentConfig(
+        agent_class=CodeAgent,
+        model=hf_model,
+        instructions="Expand the provided outline into a detailed, well-written article.",
+        max_steps=15,
+    ),
+)
+
+pipeline = AgentPipeline([
+    factory.create("drafter"),
+    factory.create("expander"),
+])
+
+result = pipeline.run("Write an article about the history of the internet.")
+print(result)
+```
+
+> **Tip:** Any number of agents from any mix of providers can be chained
+> in a single `AgentPipeline` — there is no limit on the number of steps
+> or the combination of backends.
+
+---
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).  
