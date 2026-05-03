@@ -103,25 +103,56 @@ agent = CodeAgent(tools=[analysis_tool], model=model)
 run: models used, tools called, token counts, and VLM-vs-text run breakdown.  
 It is updated **automatically** — no extra code needed in your agents.
 
+#### VLM example — HuggingFace model
+
 ```python
-from smolagents import CodeAgent, OpenAIModel
+import PIL.Image
+from smolagents import ImageAnalysisTool, InferenceClientModel, VLMCodeAgent
 from smolagents.monitoring import get_usage_tracker
 
-model = OpenAIModel(
-    model_id="gpt-4o-mini",
-    api_base="https://llm7.io/v1",
-    api_key="YOUR_API_KEY",
-)
-agent = CodeAgent(tools=[], model=model)
-agent.run("What is 2+2?")
+model = InferenceClientModel(model_id="meta-llama/Llama-3.2-11B-Vision-Instruct")
+agent = VLMCodeAgent(tools=[ImageAnalysisTool(model=model)], model=model)
+
+image = PIL.Image.open("photo.jpg")
+agent.run("Describe what you see in this image in detail.", images=[image])
 
 tracker = get_usage_tracker()
 print(tracker.get_summary())
-# {'run_count': 1, 'vlm_run_count': 0, 'model_invocations': {...},
-#  'tool_invocations': {...}, 'total_token_usage': {...}}
+# {'run_count': 1, 'vlm_run_count': 1, 'model_invocations': {'meta-llama/Llama-3.2-11B-Vision-Instruct': 1},
+#  'tool_invocations': {'image_analysis': 1}, 'total_token_usage': {...}}
 
 tracker.reset()  # Clear all counters
 ```
+
+#### VLM example — external OpenAI-compatible API
+
+```python
+import PIL.Image
+from smolagents import ImageAnalysisTool, OpenAIModel, VLMCodeAgent
+from smolagents.monitoring import get_usage_tracker
+
+model = OpenAIModel(
+    model_id="gpt-4o",
+    api_base="https://llm7.io/v1",  # or any OpenAI-compatible URL
+    api_key="YOUR_API_KEY",
+)
+agent = VLMCodeAgent(tools=[ImageAnalysisTool(model=model)], model=model)
+
+image = PIL.Image.open("photo.jpg")
+agent.run("Describe what you see in this image in detail.", images=[image])
+
+tracker = get_usage_tracker()
+print(tracker.get_summary())
+# {'run_count': 1, 'vlm_run_count': 1, 'model_invocations': {'gpt-4o': 1},
+#  'tool_invocations': {'image_analysis': 1}, 'total_token_usage': {...}}
+
+tracker.reset()  # Clear all counters
+```
+
+> **Parametrized example:** [`examples/vlm_usage_tracking/`](examples/vlm_usage_tracking/)
+> contains a ready-to-run script that runs both backends back-to-back.
+> All model IDs, API keys, and agent settings live in a single
+> [`config.yaml`](examples/vlm_usage_tracking/config.yaml) — no code edits required.
 
 ---
 
